@@ -1,0 +1,31 @@
+name: Daily LINE Fitness Bot
+
+on:
+  schedule:
+    # 09:00 Asia/Taipei == 01:00 UTC
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}  # 手動執行按鈕
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      # 讓日期時區一致（我們的程式也有指定 Asia/Taipei，但設這個較保險）
+      TZ: Asia/Taipei
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_GROUP_ID: ${{ secrets.LINE_GROUP_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run bot
+        run: node index.mjs
