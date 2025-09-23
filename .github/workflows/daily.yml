@@ -2,9 +2,9 @@ name: Daily LINE Fitness Bot
 
 on:
   schedule:
-    # 09:00 Asia/Taipei == 01:00 UTC
-    - cron: "0 1 * * *"
-  workflow_dispatch: {}  # 手動執行按鈕
+    # 07:30 Asia/Taipei == 23:30 UTC (前一天)
+    - cron: "30 23 * * *"
+  workflow_dispatch: {}
 
 jobs:
   run:
