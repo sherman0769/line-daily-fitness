@@ -72,11 +72,8 @@ async function generatePost() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('缺少 GEMINI_API_KEY');
 
-  // 新 SDK 的初始化方式
-  const ai = new GoogleGenAI({ apiKey });
-
-  // 先用目前可用的 2.5 系列（官方建議）
-  const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const dateStr = twDateStr();
   const theme = getWeekTheme();
