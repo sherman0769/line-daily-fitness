@@ -72,8 +72,11 @@ async function generatePost() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('缺少 GEMINI_API_KEY');
 
+  // 🔧 強制切換到 v1 API
+  process.env.GENERATIVE_LANGUAGE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1";
+
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
   const dateStr = twDateStr();
   const theme = getWeekTheme();
@@ -163,3 +166,4 @@ async function pushToLine(text) {
     process.exit(1);
   }
 })();
+
