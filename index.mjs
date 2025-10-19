@@ -73,7 +73,7 @@ async function generatePost() {
   if (!apiKey) throw new Error('缺少 GEMINI_API_KEY');
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const dateStr = twDateStr();
   const theme = getWeekTheme();
@@ -163,3 +163,4 @@ async function pushToLine(text) {
     process.exit(1);
   }
 })();
+
