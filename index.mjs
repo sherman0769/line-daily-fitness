@@ -166,4 +166,3 @@ async function pushToLine(text) {
     process.exit(1);
   }
 })();
-
