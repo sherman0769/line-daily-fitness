@@ -73,7 +73,6 @@ async function generatePost() {
   if (!apiKey) throw new Error('缺少 GEMINI_API_KEY');
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const dateStr = twDateStr();
   const theme = getWeekTheme();
@@ -106,8 +105,12 @@ ${cta}
 - 全文不得插入空白行；每條 ≤ 18 字；emoji 精簡。
 `.trim();
 
-  const result = await model.generateContent(prompt);
-  const text = result.response?.text?.().trim();
+  const resp = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+  });
+
+  const text = resp.text?.trim();
   if (!text) throw new Error('Gemini 無內容回傳');
   return text;
 }
