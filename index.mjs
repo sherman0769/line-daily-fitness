@@ -22,6 +22,48 @@ const CTA_VARIANTS = [
   '小步快走，持續最重要！ 🏁'
 ];
 
+const LINE_API = 'https://api.line.me/v2/bot/message/push';
+const GEMINI_RETRY_DELAYS_MS = [5000, 15000, 30000];
+const RETRYABLE_GEMINI_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getErrorSummary(e) {
+  const status = e?.status ?? e?.statusCode ?? e?.code ?? e?.response?.status;
+  const message = e?.message || String(e);
+  return status ? `${status} ${message}` : message;
+}
+
+function isRetryableGeminiError(e) {
+  const status = e?.status ?? e?.statusCode ?? e?.code ?? e?.response?.status;
+  const numericStatus = typeof status === 'string' ? Number(status) : status;
+  const message = e?.message || String(e);
+
+  return RETRYABLE_GEMINI_STATUS_CODES.has(numericStatus)
+    || /high demand|UNAVAILABLE|temporarily unavailable/i.test(message);
+}
+
+async function generateContentWithRetry(ai, request) {
+  for (let attempt = 0; attempt <= GEMINI_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await ai.models.generateContent(request);
+    } catch (e) {
+      const canRetry = isRetryableGeminiError(e);
+      if (!canRetry || attempt === GEMINI_RETRY_DELAYS_MS.length) {
+        throw e;
+      }
+
+      const delayMs = GEMINI_RETRY_DELAYS_MS[attempt];
+      console.warn(
+        `Gemini 暫時失敗，準備第 ${attempt + 1}/${GEMINI_RETRY_DELAYS_MS.length} 次重試，等待 ${delayMs / 1000} 秒：${getErrorSummary(e)}`
+      );
+      await sleep(delayMs);
+    }
+  }
+}
+
 function getWeekTheme(date = new Date()) {
   const d = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
   return WEEK_THEMES[d.getDay()];
@@ -55,8 +97,6 @@ function saveHistory(arr) {
   fs.writeFileSync(HISTORY_PATH, JSON.stringify(arr.slice(-7), null, 2), 'utf8'); // 只保留最近7次
 }
 
-const LINE_API = 'https://api.line.me/v2/bot/message/push';
-
 function twDateStr(d = new Date()) {
   const parts = new Intl.DateTimeFormat('zh-TW', {
     timeZone: 'Asia/Taipei',
@@ -68,11 +108,21 @@ function twDateStr(d = new Date()) {
   return `${y}年${m}月${dd}日`;
 }
 
+function buildGeminiFallbackPost(dateStr = twDateStr()) {
+  return `🌟 Li's Meet Pro 每日健身小提醒｜${dateStr}
+· · · · ·
+
+今天健身提醒服務暫時忙碌，先做一件最簡單的事：起身走動 3 分鐘、喝一杯水、做三次深呼吸。
+
+你的專屬教練 李詩民 提醒您。
+預約與補課系統 👉 https://lms-booking-pro-5467.vercel.app/`;
+}
+
 async function generatePost() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('缺少 GEMINI_API_KEY');
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
 
   const dateStr = twDateStr();
   const theme = getWeekTheme();
@@ -105,7 +155,7 @@ ${cta}
 - 全文不得插入空白行；每條 ≤ 18 字；emoji 精簡。
 `.trim();
 
-  const resp = await ai.models.generateContent({
+  const resp = await generateContentWithRetry(ai, {
     model: 'gemini-2.5-flash',
     contents: prompt,
   });
@@ -143,22 +193,37 @@ async function pushToLine(text) {
 (async () => {
   try {
     const history = loadHistory();
-    let post = await generatePost();
+    let post;
     let tries = 1;
+    let shouldSaveHistory = true;
 
-    // 若與歷史任一篇相似度 > 0.80，最多重生2次
-    while (tries <= 2) {
-      const maxSim = Math.max(0, ...history.map(h => similarity(post, h.text || h)));
-      if (maxSim <= 0.80) break;
+    try {
       post = await generatePost();
-      tries++;
+
+      // 若與歷史任一篇相似度 > 0.80，最多重生2次
+      while (tries <= 2) {
+        const maxSim = Math.max(0, ...history.map(h => similarity(post, h.text || h)));
+        if (maxSim <= 0.80) break;
+        post = await generatePost();
+        tries++;
+      }
+    } catch (e) {
+      if (!isRetryableGeminiError(e)) {
+        throw e;
+      }
+
+      console.error('Gemini 重試後仍暫時失敗，改送 LINE 備援訊息：', getErrorSummary(e));
+      post = buildGeminiFallbackPost();
+      shouldSaveHistory = false;
     }
 
     await pushToLine(post);
 
-    // 記錄歷史
-    history.push({ date: twDateStr(), text: post });
-    saveHistory(history);
+    // 記錄歷史；Gemini 暫時失敗時的備援訊息不寫入歷史，避免影響後續相似度
+    if (shouldSaveHistory) {
+      history.push({ date: twDateStr(), text: post });
+      saveHistory(history);
+    }
 
     console.log('✅ 已推送到群組（相似度檢查嘗試次數：', tries, '）');
   } catch (e) {
